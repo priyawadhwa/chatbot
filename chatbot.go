@@ -1,12 +1,15 @@
-package github
+package chatbot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
+	"google.golang.org/api/chat/v1"
 )
 
 const (
@@ -15,7 +18,42 @@ const (
 	organization             = "GoogleContainerTools"
 	columnName               = "Waiting Code Review"
 	mediaTypeProjectsPreview = "application/vnd.github.inertia-preview+json"
+	url                      = "https://github.com/orgs/GoogleContainerTools/projects/1"
 )
+
+// Chatbot polls github every hour and posts to the group
+func Chatbot(w http.ResponseWriter, r *http.Request) {
+	client := NewGithubClient()
+	cards, err := client.RetrieveCards()
+	var msg string
+	if err != nil {
+		returnError(w, err)
+	} else {
+		msg = fmt.Sprintf("currently, there are %d PRs waiting code review \n %s", len(cards), url)
+	}
+
+	chatClient, err := chat.New(http.DefaultClient)
+	if err != nil {
+		returnError(w, err)
+	}
+	chatClient.BasePath
+	card := []chat.Card{
+		{
+			Name: msg,
+		},
+	}
+	data, err := json.Marshal(card)
+	if err != nil {
+		errMsg := fmt.Sprintf("error marshalling json: %v", err)
+		http.Error(w, errMsg, http.StatusNotImplemented)
+	}
+	w.Write(data)
+}
+
+func returnError(w http.ResponseWriter, err error) {
+	errMsg := fmt.Sprintf("error: %v", err)
+	http.Error(w, errMsg, http.StatusBadRequest)
+}
 
 func accessToken() string {
 	return os.Getenv("GITHUB_ACCESS_TOKEN")
