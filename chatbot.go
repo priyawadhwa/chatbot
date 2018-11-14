@@ -29,29 +29,32 @@ const (
 func Chatbot(w http.ResponseWriter, r *http.Request) {
 	space, err := retrieveSpace(r)
 	if err != nil {
-		returnError(w, errors.Wrap(err, "retrieving space"))
+		log.Print(err)
+		return
 	}
 	resp, err := retrieveResponseMessage(space)
 	if err != nil {
-		returnError(w, errors.Wrap(err, "retrieving response message"))
+		log.Print(err)
+		return
 	}
 	if err := respondToChat(resp, space); err != nil {
-		returnError(w, errors.Wrap(err, "responding to chat"))
+		log.Print(err)
+		return
 	}
 }
 
 func retrieveSpace(r *http.Request) (string, error) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return "", errors.Wrap(err, "reading request body")
+		return "", err
 	}
 	var msg chat.Message
 	err = json.Unmarshal(contents, &msg)
 	if err != nil {
-		return "", errors.Wrapf(err, "unmarshalling json: %s", string(contents))
+		return "", err
 	}
 	if msg.Space == nil {
-		return "", errors.New("no chat space provided in request")
+		return "", errors.New("no space provided in request")
 	}
 	return msg.Space.Name, nil
 }
@@ -87,11 +90,6 @@ func respondToChat(msg *chat.Message, space string) error {
 
 	_, err = client.Do(req)
 	return err
-}
-
-func returnError(w http.ResponseWriter, err error) {
-	errMsg := fmt.Sprintf("error: %v", err)
-	http.Error(w, errMsg, http.StatusBadRequest)
 }
 
 func apiKey() string {
