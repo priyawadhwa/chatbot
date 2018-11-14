@@ -1,0 +1,15 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: ping
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: ping
+            image: gcr.io/priya-wadhwa/ping:latest
+            args: ["-space", "_Vy7zAAAAAE"]
+          restartPolicy: OnFailure
