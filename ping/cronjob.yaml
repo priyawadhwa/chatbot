@@ -3,7 +3,8 @@ kind: CronJob
 metadata:
   name: ping
 spec:
-  schedule: "*/5 * * * *"
+  # Run at 1pm every day to notify the team of the number of PRs waiting code review
+  schedule: "0 13 * * *"
   jobTemplate:
     spec:
       template:
@@ -11,5 +12,5 @@ spec:
           containers:
           - name: ping
             image: gcr.io/priya-wadhwa/ping:latest
-            args: ["-space", "_Vy7zAAAAAE"]
+            args: ["-space", "AAAAcfMLLAU"]
           restartPolicy: OnFailure
