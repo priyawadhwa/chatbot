@@ -25,14 +25,15 @@ const (
 	url                      = "https://github.com/orgs/GoogleContainerTools/projects/1"
 )
 
-// Chatbot polls github every hour and posts to the group
+// Chatbot receives requests and responds with the number of PRs awaiting review
+// in the GoogleContainerTools project
 func Chatbot(w http.ResponseWriter, r *http.Request) {
 	space, err := retrieveSpace(r)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-	resp, err := retrieveResponseMessage(space)
+	resp, err := generateResponseMessage(space)
 	if err != nil {
 		log.Print(err)
 		return
@@ -43,6 +44,7 @@ func Chatbot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// retrieves the space (hangouts chat ID) from the request
 func retrieveSpace(r *http.Request) (string, error) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -59,7 +61,8 @@ func retrieveSpace(r *http.Request) (string, error) {
 	return msg.Space.Name, nil
 }
 
-func retrieveResponseMessage(space string) (*chat.Message, error) {
+// gets the number of PRs awaiting code review and generates a reponse message
+func generateResponseMessage(space string) (*chat.Message, error) {
 	client := NewGithubClient()
 	cards, err := client.RetrieveCards()
 	var msg string
@@ -67,14 +70,15 @@ func retrieveResponseMessage(space string) (*chat.Message, error) {
 		log.Printf("errors responding to chat: %v", err)
 		return nil, err
 	}
-	msg = fmt.Sprintf("There are %d PRs awaiting code review right now! \n%s", len(cards), url)
+	msg = fmt.Sprintf("There are %d PRs awaiting code review \n%s", len(cards), url)
 	return &chat.Message{
 		Text: msg,
 	}, nil
 }
 
-func respondToChat(msg *chat.Message, space string) error {
-	data, err := json.Marshal(msg)
+// responds to a chat with the response message
+func respondToChat(resp *chat.Message, space string) error {
+	data, err := json.Marshal(resp)
 	if err != nil {
 		return err
 	}
@@ -105,6 +109,7 @@ type GithubClient struct {
 	client *github.Client
 }
 
+// NewGithubClient returns a client with the necessary auth
 func NewGithubClient() *GithubClient {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
