@@ -1,13 +1,17 @@
 package chatbot
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 
 	"github.com/google/go-github/github"
+	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/chat/v1"
 )
@@ -23,36 +27,75 @@ const (
 
 // Chatbot polls github every hour and posts to the group
 func Chatbot(w http.ResponseWriter, r *http.Request) {
+	space, err := retrieveSpace(r)
+	if err != nil {
+		returnError(w, errors.Wrap(err, "retrieving space"))
+	}
+	resp, err := retrieveResponseMessage(space)
+	if err != nil {
+		returnError(w, errors.Wrap(err, "retrieving response message"))
+	}
+	if err := respondToChat(resp, space); err != nil {
+		returnError(w, errors.Wrap(err, "responding to chat"))
+	}
+}
+
+func retrieveSpace(r *http.Request) (string, error) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return "", errors.Wrap(err, "reading request body")
+	}
+	var msg chat.Message
+	err = json.Unmarshal(contents, &msg)
+	if err != nil {
+		return "", errors.Wrapf(err, "unmarshalling json: %s", string(contents))
+	}
+	if msg.Space == nil {
+		return "", errors.New("no chat space provided in request")
+	}
+	return msg.Space.Name, nil
+}
+
+func retrieveResponseMessage(space string) (*chat.Message, error) {
 	client := NewGithubClient()
 	cards, err := client.RetrieveCards()
 	var msg string
 	if err != nil {
-		returnError(w, err)
-	} else {
-		msg = fmt.Sprintf("currently, there are %d PRs waiting code review \n %s", len(cards), url)
+		log.Printf("errors responding to chat: %v", err)
+		return nil, err
 	}
+	msg = fmt.Sprintf("There are %d PRs awaiting code review right now! \n%s", len(cards), url)
+	return &chat.Message{
+		Text: msg,
+	}, nil
+}
 
-	chatClient, err := chat.New(http.DefaultClient)
+func respondToChat(msg *chat.Message, space string) error {
+	data, err := json.Marshal(msg)
 	if err != nil {
-		returnError(w, err)
+		return err
 	}
-	chatClient.BasePath
-	card := []chat.Card{
-		{
-			Name: msg,
-		},
-	}
-	data, err := json.Marshal(card)
-	if err != nil {
-		errMsg := fmt.Sprintf("error marshalling json: %v", err)
-		http.Error(w, errMsg, http.StatusNotImplemented)
-	}
-	w.Write(data)
+	url := fmt.Sprintf("https://chat.googleapis.com/v1/%s/messages", space)
+
+	body := bytes.NewBuffer(data)
+
+	req, err := http.NewRequest("POST", url, body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey())
+
+	client := &http.Client{}
+
+	_, err = client.Do(req)
+	return err
 }
 
 func returnError(w http.ResponseWriter, err error) {
 	errMsg := fmt.Sprintf("error: %v", err)
 	http.Error(w, errMsg, http.StatusBadRequest)
+}
+
+func apiKey() string {
+	return os.Getenv("API_KEY")
 }
 
 func accessToken() string {
