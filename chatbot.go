@@ -28,41 +28,53 @@ const (
 // Chatbot receives requests and responds with the number of PRs awaiting review
 // in the GoogleContainerTools project
 func Chatbot(w http.ResponseWriter, r *http.Request) {
-	space, err := retrieveSpace(r)
+	p, err := retrieveMessageProperties(r)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-	resp, err := generateResponseMessage(space)
+	resp, err := generateResponseMessage(p)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-	if err := respondToChat(resp, space); err != nil {
+	if err := respondToChat(resp, p); err != nil {
 		log.Print(err)
 		return
 	}
 }
 
+type MessageProperties struct {
+	Space  string
+	Thread string
+}
+
 // retrieves the space (hangouts chat ID) from the request
-func retrieveSpace(r *http.Request) (string, error) {
+func retrieveMessageProperties(r *http.Request) (*MessageProperties, error) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	var msg chat.Message
 	err = json.Unmarshal(contents, &msg)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if msg.Space == nil {
-		return "", errors.New("no space provided in request")
+		return nil, errors.New("no space provided in request")
 	}
-	return msg.Space.Name, nil
+	var thread string
+	if msg.Thread != nil {
+		thread = msg.Thread.Name
+	}
+	return &MessageProperties{
+		Space:  msg.Space.Name,
+		Thread: thread,
+	}, nil
 }
 
 // gets the number of PRs awaiting code review and generates a reponse message
-func generateResponseMessage(space string) (*chat.Message, error) {
+func generateResponseMessage(p *MessageProperties) (*chat.Message, error) {
 	client := NewGithubClient()
 	cards, err := client.RetrieveCards()
 	var msg string
@@ -71,18 +83,26 @@ func generateResponseMessage(space string) (*chat.Message, error) {
 		return nil, err
 	}
 	msg = fmt.Sprintf("There are %d PRs awaiting code review \n%s", len(cards), url)
-	return &chat.Message{
+	log.Printf("should be responding to thread %s", p.Thread)
+
+	m := chat.Message{
 		Text: msg,
-	}, nil
+	}
+	if p.Thread != "" {
+		m.Thread = &chat.Thread{
+			Name: p.Thread,
+		}
+	}
+	return &m, nil
 }
 
 // responds to a chat with the response message
-func respondToChat(resp *chat.Message, space string) error {
+func respondToChat(resp *chat.Message, p *MessageProperties) error {
 	data, err := json.Marshal(resp)
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("https://chat.googleapis.com/v1/%s/messages", space)
+	url := fmt.Sprintf("https://chat.googleapis.com/v1/%s/messages", p.Space)
 
 	body := bytes.NewBuffer(data)
 
