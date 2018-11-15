@@ -12,5 +12,5 @@ spec:
           containers:
           - name: ping
             image: gcr.io/priya-wadhwa/ping:latest
-            args: ["-space", "AAAAcfMLLAU"]
+            args: ["-space", "AAAAs0Fc9eg"]
           restartPolicy: OnFailure
